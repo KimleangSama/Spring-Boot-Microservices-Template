@@ -1,0 +1,83 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio-dev
+  namespace: istio-system
+spec:
+  profile: default
+
+  meshConfig:
+    enableAutoMtls: true
+    accessLogFile: /dev/stdout
+    defaultConfig:
+      tracing:
+        sampling: 10.0
+
+  components:
+    pilot:
+      k8s:
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+        hpaSpec:
+          minReplicas: 1
+          maxReplicas: 3
+          metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: 70
+          scaleTargetRef:
+            apiVersion: apps/v1
+            kind: Deployment
+            name: istiod
+
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true
+        k8s:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          hpaSpec:
+            minReplicas: 1
+            maxReplicas: 2
+            metrics:
+              - type: Resource
+                resource:
+                  name: cpu
+                  target:
+                    type: Utilization
+                    averageUtilization: 80
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: istio-ingressgateway
+
+    egressGateways:
+      - name: istio-egressgateway
+        enabled: false
+
+  values:
+    global:
+      proxy:
+        autoInject: "enabled"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+      logging:
+        level: "default:info"
