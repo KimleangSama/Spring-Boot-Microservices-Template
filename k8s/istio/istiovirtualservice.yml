@@ -4,26 +4,31 @@ metadata:
   name: product-service
 spec:
   hosts:
-    - product-service
+    - product-service.default.svc.cluster.local
   http:
     - route:
         - destination:
-            host: product-service
+            host: product-service.default.svc.cluster.local
             subset: v1
-          weight: 100
+          weight: 50
         - destination:
-            host: product-service
+            host: product-service.default.svc.cluster.local
             subset: v2
-          weight: 100
+          weight: 50
         - destination:
-            host: product-service
+            host: product-service.default.svc.cluster.local
             subset: v3
-          weight: 0
+          weight: 50
         - destination:
-            host: product-service
+            host: product-service.default.svc.cluster.local
             subset: v4
-          weight: 0
+          weight: 50
         - destination:
-            host: product-service
+            host: product-service.default.svc.cluster.local
             subset: latest
-          weight: 0
+          weight: 50
+      timeout: 5s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: gateway-error,connect-failure,refused-stream

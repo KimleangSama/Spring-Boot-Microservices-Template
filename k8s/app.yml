@@ -56,6 +56,30 @@ spec:
             - name: SERVICES_URLS_INVENTORY_SERVICE
               value: "http://inventory-service:8082"
 ---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  name: api-gateway-ingress
+  labels:
+    app: api-gateway
+    service: api-gateway
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: servicemesh.demo
+      http:
+        paths:
+          - path: /gateway(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 9000
+---
 ##################################################################################################
 # Product service
 ##################################################################################################
@@ -263,7 +287,7 @@ spec:
       containers:
         - name: order-service
           image: kimleangk/order-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8081
           env:
@@ -321,6 +345,6 @@ spec:
       containers:
         - name: inventory-service
           image: kimleangk/inventory-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8082

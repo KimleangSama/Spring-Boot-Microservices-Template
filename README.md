@@ -22,3 +22,9 @@ kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
 This above command checks if the `gateways.gateway.networking.k8s.io` Custom Resource Definition (CRD) exists. If it does not,
 it applies the standard installation of the Gateway API from the specified URL. This is useful for managing ingress
 traffic in Kubernetes clusters. Run it before deploying the Istio gateway.
+
+```shell
+kubectl -n ingress-nginx get deploy ingress-nginx-controller -o yaml | istioctl kube-inject -f - | kubectl apply -f -
+```
+
+This above command injects the Istio sidecar into the `ingress-nginx-controller` deployment in the `ingress-nginx`

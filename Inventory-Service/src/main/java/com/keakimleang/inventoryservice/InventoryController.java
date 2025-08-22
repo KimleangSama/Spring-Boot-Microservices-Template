@@ -1,5 +1,6 @@
 package com.keakimleang.inventoryservice;
 
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -21,6 +22,9 @@ public class InventoryController {
         // In a real application, you would check the database or an external service
         // For any other SKU or if the quantity exceeds available stock
         // Not in stock
+        if (Objects.equals(skuCode, "OPPO")) {
+            throw new IllegalArgumentException("Invalid SKU code: " + skuCode);
+        }
         log.info("Checking if inventory is in stock");
         if ("IPHONE".equalsIgnoreCase(skuCode) && quantity <= 100) {
             return true; // In stock
