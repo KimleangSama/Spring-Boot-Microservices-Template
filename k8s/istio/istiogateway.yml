@@ -1,12 +1,15 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: sbms-gateway
+  name: mesh-gateway
+  labels:
+    app: mesh-gateway
 spec:
   gatewayClassName: istio
   listeners:
-    - name: http
-      port: 9000
+    - name: ui-http
+      hostname: servicemesh.demo
+      port: 80
       protocol: HTTP
       allowedRoutes:
         namespaces:
@@ -15,11 +18,17 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: sbms-route
+  name: mesh-gateway-ui
+  labels:
+    app: mesh-gateway
 spec:
   parentRefs:
-    - name: sbms-gateway
+    - name: mesh-gateway
+      sectionName: ui-http
+  hostnames:
+    - servicemesh.demo
   rules:
+    # 1️⃣ API routes
     - matches:
         - path:
             type: PathPrefix
@@ -27,18 +36,14 @@ spec:
         - path:
             type: Exact
             value: /actuator/health
-        - path:
-            type: Exact
-            value: /product/actuator/health
-        - path:
-            type: Exact
-            value: /order/actuator/health
-        - path:
-            type: Exact
-            value: /inventory/actuator/health
       backendRefs:
         - name: api-gateway
-          port: 9000
-        - name: product-service
           port: 8080
----
+    # 2️⃣ UI routes (all other paths)
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: frontend
+          port: 80

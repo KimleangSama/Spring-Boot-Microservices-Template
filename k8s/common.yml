@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: common-variables
+data:
+  CONFIG_SERVER_URI: "http://config-server:9999"
+  PRODUCT_SERVICE_URI: "http://product-service:8081"
+  ORDER_SERVICE_URI: "http://order-service:8082"
+  INVENTORY_SERVICE_URI: "http://inventory-service:8083"
+  ZIPKIN_TRACING_ENDPOINT: "http://tempo:9411/api/v2/spans"
+  LOKI_ENDPOINT: "http://loki:3100/loki/api/v1/push"
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USERNAME: "rabbitmq"
+  RABBITMQ_PASSWORD: "rabbitmq"

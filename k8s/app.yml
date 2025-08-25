@@ -1,3 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: config-server
+  labels:
+    app: config-server
+    service: config-server
+spec:
+  ports:
+    - port: 9999
+      name: http
+  selector:
+    app: config-server
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: config-server-sa
+  labels:
+    account: config-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-server
+  labels:
+    app: config-server
+    version: latest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: config-server
+      version: latest
+  template:
+    metadata:
+      labels:
+        app: config-server
+        version: latest
+    spec:
+      serviceAccountName: config-server-sa
+      containers:
+        - name: config-server
+          image: kimleangk/config-server
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9999
+          envFrom:
+            - configMapRef:
+                name: common-variables
+---
 ##################################################################################################
 # API Gateway
 ##################################################################################################
@@ -10,7 +61,7 @@ metadata:
     service: api-gateway
 spec:
   ports:
-    - port: 9000
+    - port: 8080
       name: http
   selector:
     app: api-gateway
@@ -44,45 +95,48 @@ spec:
       serviceAccountName: api-gateway-sa
       containers:
         - name: api-gateway
-          image: kimleangk/api-gateway:v2
+          image: kimleangk/api-gateway
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 9000
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: common-variables
           env:
-            - name: SERVICES_URLS_PRODUCT_SERVICE
-              value: "http://product-service:8080"
-            - name: SERVICES_URLS_ORDER_SERVICE
-              value: "http://order-service:8081"
-            - name: SERVICES_URLS_INVENTORY_SERVICE
-              value: "http://inventory-service:8082"
+            - name: spring.data.redis.host
+              value: "redis"
+            - name: spring.data.redis.port
+              value: "6379"
+            - name: cors.allowed-host
+              value: "http://localhost:5173,http://localhost:8080,http://servicemesh.demo"
+#---
+#apiVersion: networking.k8s.io/v1
+#kind: Ingress
+#metadata:
+#  annotations:
+#    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#    nginx.ingress.kubernetes.io/rewrite-target: /$2
+#  name: api-gateway-ingress
+#  labels:
+#    app: api-gateway
+#    service: api-gateway
+#spec:
+#  ingressClassName: nginx
+#  rules:
+#    - host: servicemesh.demo
+#      http:
+#        paths:
+#          - path: /gateway(/|$)(.*)
+#            pathType: ImplementationSpecific
+#            backend:
+#              service:
+#                name: api-gateway
+#                port:
+#                  number: 9000
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-  name: api-gateway-ingress
-  labels:
-    app: api-gateway
-    service: api-gateway
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: servicemesh.demo
-      http:
-        paths:
-          - path: /gateway(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: api-gateway
-                port:
-                  number: 9000
----
-##################################################################################################
-# Product service
-##################################################################################################
+###################################################################################################
+## Product service
+###################################################################################################
 apiVersion: v1
 kind: Service
 metadata:
@@ -92,7 +146,7 @@ metadata:
     service: product-service
 spec:
   ports:
-    - port: 8080
+    - port: 8081
       name: http
   selector:
     app: product-service
@@ -107,7 +161,7 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service-v1
+  name: product-service
   labels:
     app: product-service
     version: v1
@@ -126,123 +180,28 @@ spec:
       serviceAccountName: product-service-sa
       containers:
         - name: product-service
-          image: kimleangk/product-service:v1
+          image: kimleangk/product-service
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
-
+            - containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: common-variables
+          env:
+            - name: DATABASE_HOST
+              value: "postgres"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "ecommerce"
+            - name: DATABASE_USER
+              value: "postgres"
+            - name: DATABASE_PASSWORD
+              value: "securepassword"
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: product-service-v2
-  labels:
-    app: product-service
-    version: v2
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: product-service
-      version: v2
-  template:
-    metadata:
-      labels:
-        app: product-service
-        version: v2
-    spec:
-      serviceAccountName: product-service-sa
-      containers:
-        - name: product-service-v2
-          image: kimleangk/product-service:v2
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: product-service-v3
-  labels:
-    app: product-service
-    version: v3
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: product-service
-      version: v3
-  template:
-    metadata:
-      labels:
-        app: product-service
-        version: v3
-    spec:
-      serviceAccountName: product-service-sa
-      containers:
-        - name: product-service-v3
-          image: kimleangk/product-service:v3
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: product-service-v4
-  labels:
-    app: product-service
-    version: v4
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: product-service
-      version: v4
-  template:
-    metadata:
-      labels:
-        app: product-service
-        version: v4
-    spec:
-      serviceAccountName: product-service-sa
-      containers:
-        - name: product-service-v4
-          image: kimleangk/product-service:v4
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: product-service-latest
-  labels:
-    app: product-service
-    version: latest
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: product-service
-      version: latest
-  template:
-    metadata:
-      labels:
-        app: product-service
-        version: latest
-    spec:
-      serviceAccountName: product-service-sa
-      containers:
-        - name: product-service-latest
-          image: kimleangk/product-service:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
----
-##################################################################################################
-# Order service
-##################################################################################################
+###################################################################################################
+## Order service
+###################################################################################################
 apiVersion: v1
 kind: Service
 metadata:
@@ -252,7 +211,7 @@ metadata:
     service: order-service
 spec:
   ports:
-    - port: 8081
+    - port: 8082
       name: http
   selector:
     app: order-service
@@ -289,18 +248,25 @@ spec:
           image: kimleangk/order-service:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 8081
+            - containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: common-variables
           env:
-            - name: SERVICES_URLS_PRODUCT_SERVICE
-              value: "http://product-service:8080"
-            - name: SERVICES_URLS_ORDER_SERVICE
-              value: "http://order-service:8081"
-            - name: SERVICES_URLS_INVENTORY_SERVICE
-              value: "http://inventory-service:8082"
+            - name: DATABASE_HOST
+              value: "postgres"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "ecommerce"
+            - name: DATABASE_USER
+              value: "postgres"
+            - name: DATABASE_PASSWORD
+              value: "securepassword"
 ---
-##################################################################################################
-# Inventory service
-##################################################################################################
+###################################################################################################
+## Inventory service
+###################################################################################################
 apiVersion: v1
 kind: Service
 metadata:
@@ -310,7 +276,7 @@ metadata:
     service: inventory-service
 spec:
   ports:
-    - port: 8082
+    - port: 8083
       name: http
   selector:
     app: inventory-service
@@ -347,4 +313,117 @@ spec:
           image: kimleangk/inventory-service:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 8082
+            - containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: common-variables
+          env:
+            - name: DATABASE_HOST
+              value: "postgres"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "ecommerce"
+            - name: DATABASE_USER
+              value: "postgres"
+            - name: DATABASE_PASSWORD
+              value: "securepassword"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+    service: notification-service
+spec:
+  ports:
+    - port: 8084
+      name: http
+  selector:
+    app: notification-service
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: notification-service-sa
+  labels:
+    account: notification-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+    version: latest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+      version: latest
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        version: latest
+    spec:
+      serviceAccountName: notification-service-sa
+      containers:
+        - name: notification-service
+          image: kimleangk/notification-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8084
+          envFrom:
+            - configMapRef:
+                name: common-variables
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+    service: frontend
+spec:
+  ports:
+    - port: 80
+      name: http
+  selector:
+    app: frontend
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-sa
+  labels:
+    account: frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+    version: latest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+      version: latest
+  template:
+    metadata:
+      labels:
+        app: frontend
+        version: latest
+    spec:
+      serviceAccountName: frontend-sa
+      containers:
+        - name: frontend
+          image: kimleangk/frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80

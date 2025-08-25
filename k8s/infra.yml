@@ -1,0 +1,823 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-secret
+  labels:
+    app: postgres
+data:
+  POSTGRES_DB: ecommerce
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: securepassword
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-volume
+  labels:
+    type: local
+    app: postgres
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/postgresql
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-volume-claim
+  labels:
+    app: postgres
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: postgres
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: 'postgres:17.6'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: postgres-secret
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgresdata
+      volumes:
+        - name: postgresdata
+          persistentVolumeClaim:
+            claimName: postgres-volume-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  labels:
+    app: postgres-exporter
+spec:
+  ports:
+    - port: 9187
+      targetPort: 9187
+      protocol: TCP
+      name: http
+  selector:
+    app: postgres-exporter
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  labels:
+    app: postgres-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  template:
+    metadata:
+      labels:
+        app: postgres-exporter
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: 'prometheuscommunity/postgres-exporter:v0.17.1'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9187
+          env:
+            - name: DATA_SOURCE_URI
+              value: 'postgres:5432/ecommerce?sslmode=disable'
+            - name: DATA_SOURCE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+          args:
+            - '--collector.postmaster'
+            - '--collector.process_idle'
+            - '--collector.long_running_transactions'
+            - '--collector.stat_statements'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    app: redis
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: 'redis/redis-stack-server:7.2.0-v18'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6379
+          command: [ "redis-server", "--appendonly", "yes", "--protected-mode", "no" ]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  ports:
+    - port: 5672
+      targetPort: 5672
+      protocol: TCP
+      name: amqp
+    - port: 15672
+      targetPort: 15672
+      protocol: TCP
+      name: management
+  selector:
+    app: rabbitmq
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: 'rabbitmq:4.1.3-management-alpine'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: rabbitmq
+            - name: RABBITMQ_DEFAULT_PASS
+              value: rabbitmq
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    app: minio
+spec:
+  ports:
+    - port: 9000
+      targetPort: 9000
+      protocol: TCP
+      name: s3
+    - port: 9001
+      targetPort: 9001
+      protocol: TCP
+      name: console
+  selector:
+    app: minio
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  labels:
+    app: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: 'bitnami/minio:2025.4.22'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          env:
+            - name: MINIO_ROOT_USER
+              value: admin
+            - name: MINIO_ROOT_PASSWORD
+              value: password123
+          args:
+            - sh
+            - -euc
+            - |
+              minio server data --console-address ":9001"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  labels:
+    app: loki
+spec:
+  ports:
+    - port: 3100
+      targetPort: 3100
+      protocol: TCP
+      name: http
+  selector:
+    app: loki
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  labels:
+    app: loki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      containers:
+        - name: loki
+          image: 'grafana/loki:3.5.2'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3100
+          volumeMounts:
+            - mountPath: /etc/loki/config.yaml
+              name: loki-config
+              subPath: config.yaml
+          args:
+            - '-config.file=/etc/loki/config.yaml'
+            - '-config.expand-env=true'
+      volumes:
+        - name: loki-config
+          configMap:
+            name: loki-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  labels:
+    app: loki
+data:
+  config.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9096
+    common:
+      path_prefix: /loki
+      storage:
+        s3:
+          endpoint: http://minio:9000
+          bucketnames: loki
+          access_key_id: admin
+          secret_access_key: password123
+          s3forcepathstyle: true
+          region: us-east-1
+          insecure: true
+      replication_factor: 1
+      ring:
+        instance_addr: 127.0.0.1
+        kvstore:
+          store: inmemory
+    query_range:
+      results_cache:
+        cache:
+          embedded_cache:
+            enabled: true
+            max_size_mb: 100
+    schema_config:
+      configs:
+        - from: 2025-08-12
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    storage_config:
+      aws:
+        s3: s3
+        s3forcepathstyle: true
+        bucketnames: loki-data
+        endpoint: http://minio:9000
+        access_key_id: admin
+        secret_access_key: password123
+        insecure: true
+      tsdb_shipper:
+        active_index_directory: /loki/tsdb-shipper-active
+        cache_location: /loki/tsdb-shipper-cache
+        cache_ttl: 24h
+    compactor:
+      working_directory: /loki/compactor
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+      delete_request_store: inmemory
+    limits_config:
+      #  enforce_metric_name: false
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      # Configure ingestion limits
+      ingestion_rate_mb: 16
+      ingestion_burst_size_mb: 32
+      per_stream_rate_limit: 5MB
+      per_stream_rate_limit_burst: 10MB
+      # Chunk configuration for minute-level separation
+      max_streams_per_user: 10000
+      max_line_size: 256000
+      split_queries_by_interval: 15m
+    # Chunk store configuration
+    chunk_store_config:
+      chunk_cache_config:
+        embedded_cache:
+          enabled: true
+          max_size_mb: 100
+    ruler:
+      storage:
+        s3:
+          bucketnames: loki-ruler
+    # Analytics and usage reporting
+    analytics:
+      reporting_enabled: false
+    # Memberlist configuration
+    memberlist:
+      node_name: loki-1
+      randomize_node_name: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  ports:
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: http
+  selector:
+    app: prometheus
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: 'prom/prometheus:v3.5.0'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9090
+          args:
+            - --enable-feature=exemplar-storage
+            - --config.file=/etc/prometheus/prometheus.yml
+          volumeMounts:
+            - mountPath: /etc/prometheus/prometheus.yml
+              name: prometheus-config
+              subPath: prometheus.yml
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 2s
+      evaluation_interval: 2s
+    scrape_configs:
+      - job_name: 'Prometheus'
+        static_configs:
+          - targets: [ 'prometheus.default.svc.cluster.local:9090' ]
+      - job_name: "Postgres Exporter"
+        static_configs:
+          - targets: [ "postgres-exporter.default.svc.cluster.local:9187" ]
+      - job_name: "Gateway API"
+        metrics_path: "/actuator/prometheus"
+        static_configs:
+          - targets: [ "api-gateway.default.svc.cluster.local:8080" ]
+            labels:
+              application: "Gateway API"
+      - job_name: "Product Service"
+        metrics_path: "/actuator/prometheus"
+        static_configs:
+          - targets: [ "product-service.default.svc.cluster.local:8081" ]
+            labels:
+              application: "Product Service"
+      - job_name: "Order Service"
+        metrics_path: "/actuator/prometheus"
+        static_configs:
+          - targets: [ "order-service.default.svc.cluster.local:8082" ]
+            labels:
+              application: "Order Service"
+      - job_name: "Inventory Service"
+        metrics_path: "/actuator/prometheus"
+        static_configs:
+          - targets: [ "inventory-service.default.svc.cluster.local:8083" ]
+            labels:
+              application: "Inventory Service"
+      - job_name: "Notification Service"
+        metrics_path: "/actuator/prometheus"
+        static_configs:
+          - targets: [ "notification-service.default.svc.cluster.local:8084" ]
+            labels:
+              application: "Notification Service"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  labels:
+    app: tempo
+spec:
+  ports:
+    - port: 9411
+      targetPort: 9411
+      protocol: TCP
+      name: zipkin
+    - port: 4317
+      targetPort: 4317
+      protocol: TCP
+      name: otlp-grpc
+  selector:
+    app: tempo
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  labels:
+    app: tempo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+        - name: tempo
+          image: 'grafana/tempo:2.8.2'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9411
+            - containerPort: 4317
+          volumeMounts:
+            - mountPath: /etc/tempo.yaml
+              name: tempo-config
+              subPath: tempo.yaml
+          args:
+            - '-config.file=/etc/tempo.yaml'
+            - '-target=all'
+      volumes:
+        - name: tempo-config
+          configMap:
+            name: tempo-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  labels:
+    app: tempo
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3100
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+        zipkin:
+          endpoint: 0.0.0.0:9411
+    querier:
+      frontend_worker:
+        frontend_address: 127.0.0.1:9095
+    ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: memberlist
+          replication_factor: 1
+      trace_idle_period: 10s
+      flush_check_period: 5s
+      max_block_duration: 5m
+    memberlist:
+      join_members:
+        - tempo1:7946
+    compactor:
+      compaction:
+        compaction_window: 1h
+        max_compaction_objects: 1000000
+        block_retention: 1h
+        compacted_block_retention: 10m
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /tmp/tempo/blocks
+        pool:
+          max_workers: 100
+          queue_depth: 10000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyroscope
+  labels:
+    app: pyroscope
+spec:
+  ports:
+    - port: 4040
+      targetPort: 4040
+      protocol: TCP
+      name: http
+  selector:
+    app: pyroscope
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyroscope
+  labels:
+    app: pyroscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pyroscope
+  template:
+    metadata:
+      labels:
+        app: pyroscope
+    spec:
+      containers:
+        - name: pyroscope
+          image: 'grafana/pyroscope:1.14.0'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4040
+          args:
+            - '-config.file=/etc/pyroscope/config.yaml'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels:
+    app: grafana
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    app: grafana
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        runAsUser: 472
+        fsGroup: 472
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+#      initContainers:
+#        - name: volume-permissions
+#          image: busybox
+#          command: [ "sh", "-c", "chown -R 472:472 /var/lib/grafana" ]
+#          securityContext:
+#            runAsUser: 0
+#          volumeMounts:
+#            - name: grafana-storage
+#              mountPath: /var/lib/grafana
+      containers:
+        - name: grafana
+          image: 'grafana/grafana:12.1.1'
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - mountPath: /etc/grafana/provisioning/datasources
+              name: grafana-datasources
+      volumes:
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  labels:
+    app: grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        editable: false
+        jsonData:
+          httpMethod: POST
+          exemplarTraceIdDestinations:
+            - name: trace_id
+              datasourceUid: tempo
+      - name: Tempo
+        type: tempo
+        access: proxy
+        orgId: 1
+        url: http://tempo:3100
+        basicAuth: false
+        isDefault: true
+        version: 1
+        editable: false
+        apiVersion: 1
+        uid: tempo
+        jsonData:
+          httpMethod: GET
+          tracesToLogs:
+            datasourceUid: 'loki'
+          nodeGraph:
+            enabled: true
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        orgId: 1
+        url: http://loki:3100
+        basicAuth: false
+        isDefault: false
+        version: 1
+        editable: false
+        apiVersion: 1
+        jsonData:
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: \[.+,(.+?),
+              name: TraceID
+              url: $${__value.raw}
+      - name: Elastic
+        type: elasticsearch
+        access: proxy
+        editable: false
+        basicAuth: true
+        basicAuthUser: elastic
+        basicAuthPassword: elastic
+        jsonData:
+          timeField: '@timestamp'
+        url: http://elasticsearch:9200
+      - name: Grafana Pyroscope
+        type: grafana-pyroscope-datasource
+        url: http://pyroscope:4040
+        jsonData:
+          minStep: '15s'
+#---
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name: grafana-pvc
+#  labels:
+#    app: grafana
+#spec:
+#  storageClassName: manual
+#  accessModes:
+#    - ReadWriteMany
+#  resources:
+#    requests:
+#      storage: 2Gi
