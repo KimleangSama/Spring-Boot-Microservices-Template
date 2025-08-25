@@ -1,8 +1,10 @@
 package com.keakimleang.orderservice;
 
-import java.util.List;
+import java.math.BigDecimal;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,21 +20,34 @@ import reactor.core.publisher.Mono;
 public class OrderController {
     private final ProductWebClient productWebClient;
     private final InventoryWebClient inventoryWebClient;
+    private final OrderRepository orderRepository;
+    private final RabbitProps rabbitProps;
+    private final RabbitTemplate rabbitTemplate;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Mono<List<ProductResponse>> placeOrder(@RequestBody OrderRequest orderRequest) {
+    public Mono<String> placeOrder(@RequestBody OrderRequest orderRequest) {
         return productWebClient.getAllProducts().flatMap(products -> {
             log.info("Product data: {}", products);
             return inventoryWebClient.isInStock(orderRequest.skuCode(), orderRequest.quantity())
                     .flatMap(isProductInStock -> {
                         if (isProductInStock) {
-                            return Mono.just("Order Placed Successfully");
+                            Order order = new Order();
+                            order.setOrderNumber(UUID.randomUUID().toString());
+                            order.setPrice(orderRequest.price().multiply(BigDecimal.valueOf(orderRequest.quantity())));
+                            order.setSkuCode(orderRequest.skuCode());
+                            order.setQuantity(orderRequest.quantity());
+                            return orderRepository.save(order)
+                                    .doOnSuccess(ordered -> {
+                                        log.info("Placed order: {}", ordered);
+                                        rabbitTemplate.convertAndSend(rabbitProps.getExchangeName(), rabbitProps.getRoutingKey(), ordered.getOrderNumber());
+                                    })
+                                    .then(Mono.just("Order Placed Successfully"))
+                                    .thenReturn("Order Placed Successfully");
                         } else {
                             return Mono.just("Product with SkuCode " + orderRequest.skuCode() + " is not in stock");
                         }
-                    })
-                    .thenReturn(products);
+                    });
         });
     }
 }

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+    <springProperty scope="context" name="appName" source="spring.application.name"/>
+    <springProperty scope="context" name="lokiUrl" source="logging.loki.url"/>
+    <springProperty scope="context" name="logstashUrl" source="logging.logstash.url"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>
+                %d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n
+            </pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/app.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- rollover every hour -->
+            <fileNamePattern>logs/inventory-%d{yyyy-MM-dd_HH}.log</fileNamePattern>
+            <maxHistory>24</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+        <labels>
+            agent=loki4j
+            app=${appName}
+            host=${HOSTNAME}
+        </labels>
+        <structuredMetadata>
+            level=%level
+            thread=%thread
+            logger=%logger
+        </structuredMetadata>
+        <message>
+            <pattern>{"datetime": "%d{yyyy-MM-dd HH:mm:ss}", "level":"%level", "class":"%logger{36}", "message":
+                "%message"}
+            </pattern>
+        </message>
+        <http>
+            <url>${lokiUrl}</url>
+            <requestTimeoutMs>10000</requestTimeoutMs>
+        </http>
+        <batch>
+            <maxItems>100</maxItems>
+            <timeoutMs>10000</timeoutMs>
+        </batch>
+        <verbose>true</verbose>
+    </appender>
+    <appender name="ASYNC_LOKI" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="LOKI"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>true</includeCallerData>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ASYNC_LOKI"/>
+    </root>
+</configuration>

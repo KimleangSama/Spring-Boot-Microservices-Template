@@ -6,14 +6,14 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 @Configuration
 public class WebClientConfig {
-    @Value("${services.urls.product-service}")
-    private String productServiceUrl;
-    @Value("${services.urls.inventory-service}")
-    private String inventoryServiceUrl;
+    @Value("${services.uris.product-service}")
+    private String productServiceUri;
+    @Value("${services.uris.inventory-service}")
+    private String inventoryServiceUri;
 
     public WebClient productWebClient() {
         return WebClient.builder()
-                .baseUrl(productServiceUrl)
+                .baseUrl(productServiceUri)
                 .defaultHeader("Content-Type", "application/json")
                 .defaultHeader("Accept", "application/json")
                 .defaultHeader("User-Agent", "Order-Service-WebClient")
@@ -22,7 +22,7 @@ public class WebClientConfig {
 
     public WebClient inventoryWebClient() {
         return WebClient.builder()
-                .baseUrl(inventoryServiceUrl)
+                .baseUrl(inventoryServiceUri)
                 .defaultHeader("Content-Type", "application/json")
                 .defaultHeader("Accept", "application/json")
                 .defaultHeader("User-Agent", "Order-Service-WebClient")
